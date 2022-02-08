@@ -25,19 +25,9 @@ class Cropper:
         self.videofile = filedialog.askopenfilename()
 
         #Let us open the Video and start reading
-        self.cap = cv2.VideoCapture(self.videofile)
 
-        # Check if video opened successfully - TBD: nice exit
-        if (self.cap.isOpened() == False):
-          print("Unable to read file!")
-          exit()
-
-        while(self.cap.isOpened()):
-            # Capture first frame and exit loop
-            self.ret, self.frame = self.cap.read()
-            break
-        # release the video capture object, make sure we start from frame 1 next time
-        self.cap.release()
+        self.vid = MyVideoCapture(0, self.videofile)
+        self.ret, self.frame = self.vid.get_frame()
 
         #prep some stuff for cropping
         self.cropping = False
@@ -53,7 +43,7 @@ class Cropper:
         cv2.moveWindow("select area, use q when happy", self.x_pos, self.y_pos)
 
         #show image and let user crop, press q when happy
-        while True:
+        while self.ret:
             i = self.frame.copy()
             if not self.cropping:
                 cv2.imshow("select area, use q when happy", self.frame)
@@ -69,9 +59,6 @@ class Cropper:
                 cv2.destroyAllWindows()
                 break
 
-        #we now have the cropping parameters
-        #print(x_start, y_start, x_end, y_end)
-
         #cropping by slicing original image[y:y+h, x:x+w]
         self.cropped = self.oriImage[self.y_start:self.y_end, self.x_start:self.x_end]
 
@@ -86,25 +73,20 @@ class Cropper:
         # cv2.destroyAllWindows()
 
         # Now let us crop the video with same cropping parameters
-        self.cap = cv2.VideoCapture(self.videofile)
+        # self.cap = cv2.VideoCapture(self.videofile)
+        self.vid = MyVideoCapture(0, self.videofile)
 
         #let's keep it simple...store the new file in same directory, same name, but add suffix
         self.newFileName = os.path.join(str(Path(self.videofile).parents[0]), str(Path(self.videofile).stem) +'_cropped.avi')
         self.frame_width = self.x_end - self.x_start
         self.frame_height = self.y_end - self.y_start
 
-        #get fps info from file CV_CAP_PROP_FPS, if possible
-        self.fps = int(round(self.cap.get(5)))
-        #check if we got a value, otherwise use any number - you might need to change this
-        if self.fps == 0:
-            self.fps = 30 #so change this number if cropped video has stange steed, higher number gives slower speed
-
         # create VideoWriter object and define the codec. This may be an area for warnings and errors - use google if so
-        self.out = cv2.VideoWriter(self.newFileName, cv2.VideoWriter_fourcc('M','J','P','G'), self.fps, (self.frame_width,self.frame_height))
+        self.out = cv2.VideoWriter(self.newFileName, cv2.VideoWriter_fourcc('M','J','P','G'), self.vid.fps, (self.frame_width, self.frame_height))
 
         #read frame by frame
-        while(True):
-            self.ret, self.frame = self.cap.read()
+        while self.ret:
+            self.ret, self.frame = self.vid.get_frame()
             if self.ret:
                 #crop frame
                 self.cropped = self.frame[self.y_start:self.y_end, self.x_start:self.x_end]
@@ -114,21 +96,17 @@ class Cropper:
                 # Display the resulting frame - trying to move window, but does not always work
                 cv2.namedWindow('producing video', cv2.WINDOW_NORMAL)
                 cv2.resizeWindow('producing video', self.cropped.shape[1], self.cropped.shape[0])
-                x_pos = round(self.screen_width/2) - round(self.cropped.shape[1]/2)
-                y_pos = round(self.screen_height/2) - round(self.cropped.shape[0]/2)
-                cv2.moveWindow("producing video", self.x_pos,self.y_pos)
-                cv2.imshow('producing video',self.cropped)
+                self.x_pos = round(self.screen_width/2) - round(self.cropped.shape[1]/2)
+                self.y_pos = round(self.screen_height/2) - round(self.cropped.shape[0]/2)
+                cv2.moveWindow("producing video", self.x_pos, self.y_pos)
+                cv2.imshow('producing video', self.cropped)
 
                 # Press Q on keyboard to stop recording early
                 if cv2.waitKey(1) & 0xFF == ord('q'):
                   break
 
-        # Break the loop when done
-            else:
-                break
-
         # When everything done, release the video capture and video write objects
-        self.cap.release()
+        self.vid.__del__()
         self.out.release()
 
         # Make sure all windows are closed
@@ -154,6 +132,44 @@ class Cropper:
             # record the ending (x, y) coordinates
             self.x_end, self.y_end = x, y
             self.cropping = False # cropping is finished
+
+class MyVideoCapture:
+    def __init__(self, start_milli, video_source):
+        # Open the video source
+        self.vid = cv2.VideoCapture(video_source)
+        if not self.vid.isOpened():
+            raise ValueError("Unable to open video source", video_source)
+
+        self.vid.set(0, int(start_milli))
+
+        # Get video source width and height
+        self.width = self.vid.get(cv2.CAP_PROP_FRAME_WIDTH)
+        self.height = self.vid.get(cv2.CAP_PROP_FRAME_HEIGHT)
+        # self.dim = self.get_dim(self.width, self.height)
+
+        # Find OpenCV version
+        self.major_ver, self.minor_ver, self.subminor_ver = cv2.__version__.split('.')
+        self.fps = self.vid.get(cv2.CAP_PROP_FPS)
+
+    def get_frame(self):
+        while self.vid.isOpened():
+
+            ret, frame = self.vid.read()
+
+            if ret:
+                # Return a boolean success flag and the current frame converted to BGR
+                return ret, frame
+                # return ret, cv2.resize(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB), (self.width, self.height))
+            else:
+                return ret, None
+        else:
+            return False, None
+
+    # Release the video source when the object is destroyed
+    def __del__(self):
+        if self.vid.isOpened():
+            self.vid.release()
+
 
 if __name__ == "__main__":
     app = Cropper()
