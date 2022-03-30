@@ -11,6 +11,8 @@ import time
 
 class Cropper:
     def __init__(self):
+        self.canvas_w, self.canvas_h = 640, 360
+        self.canvas_w, self.canvas_h = 1280, 720
         self.last = None
         self.vid = None
         self.out = None
@@ -24,7 +26,7 @@ class Cropper:
         self.selected_dirs = []
         self.bt_width = 15
         # self.bt_width = 20
-        self.divider = 3
+        self.divider = 1
         self.linux_multiplier = 2
         self.delay = 50
         self.video_speed = 50
@@ -32,11 +34,13 @@ class Cropper:
         self.ret = False
         self.cropping = False
         self.cropped = False
+        self.clicked = False
         self.x_start, self.y_start, self.x_end, self.y_end = 0, 0, 0, 0
         self.rect_w, self.rect_h = 0, 0
         self.res_w, self.res_h = 0, 0
         self.photo = None
         self.cropped_frame = None
+        self.cropped_img = None
         self.col_names = ['file', 'x_start', 'x_end', 'y_start', 'y_end']
 
         self.root = Tk()
@@ -71,13 +75,13 @@ class Cropper:
         self.frame.grid(row=5, column=1)
 
         # create canvas for video
-        self.canvas_w, self.canvas_h = 640, 360
         self.canvas = Canvas(self.root, width=self.canvas_w, height=self.canvas_h)
         self.canvas.grid(row=1, column=5, rowspan=9, columnspan=4, pady=5)
         self.canvas.bind('<Motion>', self.mouse)
         self.canvas.bind("<Button-1>", self.mouse)
         self.img = self.canvas.create_image(0, 0, image=self.photo, anchor=NW)
         self.rect = self.canvas.create_rectangle(0, 0, 0, 0, outline='red')
+        self.blue_rect = self.canvas.create_rectangle(0, 0, 0, 0, outline='blue')
 
         self.bt_first = Button(self.root, text="First", width=self.bt_width, command=self.select_first)
         self.bt_first.grid(row=10, column=5, pady=5)
@@ -99,10 +103,10 @@ class Cropper:
 
         self.preview = Canvas(self.root, width=self.canvas_w, height=self.canvas_h)
         self.preview.grid(row=12, column=5, rowspan=9, columnspan=5, pady=5)
-        self.preview.bind('<Motion>', self.mouse)
+        # self.preview.bind('<Motion>', self.mouse)
         self.thumbnail = self.preview.create_image(0, 0, image=self.cropped_frame, anchor=NW)
 
-        if len(self.selected_dir)>0:
+        if len(self.selected_dir) > 0:
             self.boot()
 
         self.root.mainloop()
@@ -133,8 +137,11 @@ class Cropper:
             y_start, y_end = self.canvas_h - self.res_h, self.canvas_h
 
         if event.type == EventType.Motion:
-            if not self.cropped:
-                self.canvas.coords(self.rect, x_start, y_start, x_end, y_end)
+            self.canvas.coords(self.blue_rect, x_start, y_start, x_end, y_end)
+            # self.move_rect()
+            if self.cropped:
+                self.move_rect()
+            #     self.canvas.coords(self.rect, x_start, y_start, x_end, y_end)
         elif event.type == EventType.ButtonPress:
             # self.canvas.coords(self.rect, x_start, y_start, x_end, y_end)
             # convert to image coordinates
@@ -142,9 +149,9 @@ class Cropper:
             self.y_start, self.y_end = y_start * self.divider, y_end * self.divider
             self.df.loc[self.vid.video_source] = [self.x_start, self.x_end, self.y_start, self.y_end]
             self.cropped = True
-            if self._job is not None:
-                self.root.after_cancel(self._job)
-                self._job = None
+            self.clicked = True
+            self.move_rect()
+            self.cancel()
             self.play_preview()
 
     def play_preview(self):
@@ -158,12 +165,7 @@ class Cropper:
             self.prev_timestamp = time.time()
             if ret:
                 aspect_ratio = frame.shape[0] / frame.shape[1]
-                if aspect_ratio == 1:
-                    new_size = (360*self.linux_multiplier, 360*self.linux_multiplier)
-                elif aspect_ratio == 0.75:
-                    new_size = (480*self.linux_multiplier, 360*self.linux_multiplier)
-                else:
-                    new_size = (640*self.linux_multiplier, 360*self.linux_multiplier)
+                new_size = (int(self.canvas_h / aspect_ratio), self.canvas_h)
                 frame = cv2.resize(frame, dsize=new_size)
                 self.cropped_frame = PIL.ImageTk.PhotoImage(image=PIL.Image.fromarray(frame))
                 self.preview.itemconfigure(self.thumbnail, image=self.cropped_frame)
@@ -182,7 +184,11 @@ class Cropper:
     def reset_rect(self):
         self.canvas.coords(self.rect, 0, 0, 0, 0)
 
+    def reset_blue_rect(self):
+        self.canvas.coords(self.blue_rect, 0, 0, 0, 0)
+
     def reset_preview(self):
+        self.preview.delete(self.thumbnail)
         self.thumbnail = self.preview.create_image(0, 0, image=None, anchor=NW)
         self.preview.itemconfigure(self.thumbnail, image=None)
 
@@ -190,14 +196,6 @@ class Cropper:
         if self.vid.ret:
             self.photo = PIL.ImageTk.PhotoImage(image=PIL.Image.fromarray(self.vid.first_frame))
             self.canvas.itemconfigure(self.img, image=self.photo)
-        if pd.isnull(self.df.loc[self.vid.video_source, 'x_start']):
-            self.cropped = False
-            self.reset_rect()
-        else:
-            self.cropped = True
-            self.move_rect()
-            self.play_preview()
-
         self.update_label_videos()
 
     def export(self):
@@ -240,10 +238,9 @@ class Cropper:
             self.ret, self.frame = self.vid.vid.read()
             if self.ret:
                 #crop frame
-                self.cropped = self.frame[self.y_start:self.y_end, self.x_start:self.x_end]
-                print(self.cropped.shape)
+                self.cropped_img = self.frame[self.y_start:self.y_end, self.x_start:self.x_end]
                 # Write the frame into the file 'output.avi'
-                self.out.write(self.cropped)
+                self.out.write(self.cropped_img)
 
         # When everything done, release the video capture and video write objects
         self.vid.__del__()
@@ -279,29 +276,47 @@ class Cropper:
 
     def save(self):
         self.df.to_csv(os.path.join(self.selected_dir, self.csv_name))
+        self.load_csv()
 
     def load_files(self):
         self.files = [f for f in os.listdir(self.selected_dir) if f.endswith('.mp4')]
 
+    def cancel(self):
+        if self._job is not None:
+            self.root.after_cancel(self._job)
+            self._job = None
+
+    def reset_after_video_change(self):
+        self.cancel()
+        self.reset_preview()
+        self.reset_rect()
+        self.reset_blue_rect()
+        self.clicked = False
+        self.divider = self.vid.width / self.canvas_w
+        x_start = self.df.loc[self.vid.video_source, 'x_start']
+        if np.isnan(x_start):
+            self.cropped = False
+        elif x_start >= 0:
+            self.cropped = True
+            self.move_rect()
+            self.play_preview()
+        self.update_canvas()
+
     def select_first(self):
         self.vid = MyVideoCapture(0, self.selected_dir, self.files, 0)
-        self.reset_preview()
-        self.update_canvas()
+        self.reset_after_video_change()
 
     def select_last(self):
         self.vid = MyVideoCapture(0, self.selected_dir, self.files, len(self.files)-1)
-        self.reset_preview()
-        self.update_canvas()
+        self.reset_after_video_change()
 
     def select_next(self):
         self.vid = MyVideoCapture(0, self.selected_dir, self.files, min(len(self.files)-1, self.vid.index+1))
-        self.reset_preview()
-        self.update_canvas()
+        self.reset_after_video_change()
 
     def select_prev(self):
         self.vid = MyVideoCapture(0, self.selected_dir, self.files, max(0, self.vid.index-1))
-        self.reset_preview()
-        self.update_canvas()
+        self.reset_after_video_change()
 
     def update_label_videos(self):
         self.label_videos.config(text=f'{self.vid.index+1}/{len(self.files)} : video_name: {self.vid.video_source}')
@@ -329,15 +344,6 @@ class MyVideoCapture:
         self.height = self.vid.get(cv2.CAP_PROP_FRAME_HEIGHT)
         # self.dim = self.get_dim(self.width, self.height)
         self.fps = 25
-
-    # def get_dim(self, width, height):
-    #     if width == 1920 and height == 1080:
-    #         divider = 3
-    #     elif width == 1080 and height == 720:
-    #         divider = 2
-    #     else:
-    #         divider = 4
-    #     return int(width / divider), int(height / divider)
 
     def get_frame(self):
         while self.vid.isOpened():
