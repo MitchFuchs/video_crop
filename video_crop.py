@@ -19,7 +19,7 @@ class Cropper:
         self._job = None
         self.newFileName = None
         self.selected_dir = ''
-        self.selected_dir = "/home/mitch/clip_extractor/Directional_Push"
+        self.selected_dir = "/home/mitch/clip_extractor/Grab"
         self.files = []
         self.csv_name = "crop.txt"
         self.df = pd.DataFrame()
@@ -54,10 +54,17 @@ class Cropper:
         self.entry_folder.insert(0, self.selected_dir)
         self.bt_folder = Button(self.root, text="Browse", width=self.bt_width,
                                      command=lambda: self.ask_directory("<Button-1>"))
-        self.bt_folder.grid(row=3, column=1)
+        self.bt_folder.grid(row=3, column=1, pady=10)
 
-        self.label_resolution = Label(self.root, text="resolution", background='light grey')
-        self.label_resolution.grid(row=4, column=1, pady=5)
+        self.lab_asp = Label(self.root, text="", font=('', 25), background='light grey')
+        self.lab_asp.grid(row=4, column=1, pady=10)
+        self.lab_res = Label(self.root, text="", font=('', 25), background='light grey')
+        self.lab_res.grid(row=5, column=1, pady=10)
+        self.lab_pos = Label(self.root, text="", font=('', 25), background='light grey')
+        self.lab_pos.grid(row=6, column=1)
+
+        self.label_resolution = Label(self.root, text="choose your resolution", background='light grey')
+        self.label_resolution.grid(row=7, column=1, pady=5)
 
         self.frame = Frame(self.root, bg='light grey')
         self.var = StringVar()
@@ -72,8 +79,8 @@ class Cropper:
                 Radiobutton(self.frame, text=res, background='light grey', variable=self.var, value=res,
                     command=lambda: self.change_rect_size()).grid(row=j, column=i+1, padx=5, pady=5, sticky=W)
                 self.all_resolutions.append(res)
-        self.var.set(None)
-        self.frame.grid(row=5, column=1)
+        self.var.set(self.all_resolutions[-1])
+        self.frame.grid(row=8, column=1)
 
         # create canvas for video
         self.canvas = Canvas(self.root, width=self.canvas_w, height=self.canvas_h)
@@ -104,12 +111,14 @@ class Cropper:
 
         self.preview = Canvas(self.root, width=self.canvas_w, height=self.canvas_h)
         self.preview.grid(row=12, column=5, rowspan=9, columnspan=5, pady=5)
-        # self.preview.bind('<Motion>', self.mouse)
         self.thumbnail = self.preview.create_image(0, 0, image=self.cropped_frame, anchor=NW)
 
+        self.bindings()
+        self.change_rect_size()
+        self.move_blue_rect()
+        self.update_label_res()
         if len(self.selected_dir) > 0:
             self.boot()
-        self.bindings()
         self.root.mainloop()
 
     def boot(self):
@@ -140,6 +149,7 @@ class Cropper:
     def change_rect_size(self):
         self.rect_w, self.rect_h = [int(x) for x in self.var.get().split('x')]
         self.res_w, self.res_h = self.rect_w / self.divider, self.rect_h / self.divider
+        self.update_label_res()
 
     def mouse(self, event):
         x, y = event.x, event.y
@@ -158,10 +168,8 @@ class Cropper:
 
         if event.type == EventType.Motion:
             self.canvas.coords(self.blue_rect, x_start, y_start, x_end, y_end)
-            # self.move_rect()
             if self.cropped:
                 self.move_rect()
-            #     self.canvas.coords(self.rect, x_start, y_start, x_end, y_end)
         elif event.type == EventType.ButtonPress:
             # self.canvas.coords(self.rect, x_start, y_start, x_end, y_end)
             # convert to image coordinates
@@ -179,7 +187,6 @@ class Cropper:
         if time_elapsed > 1. / self.video_speed:
             if self.vid.vid.get(cv2.CAP_PROP_POS_FRAMES) == 0:
                 self.vid = MyVideoCapture(0, self.selected_dir, self.files, self.vid.index)
-                # print(self.df.loc[self.vid.video_source])
                 self.x_start, self.x_end, self.y_start, self.y_end = self.df.loc[self.vid.video_source]
             ret, frame = self.vid.get_cropped_frame(self.x_start, self.x_end, self.y_start, self.y_end)
             self.prev_timestamp = time.time()
@@ -189,7 +196,6 @@ class Cropper:
                 frame = cv2.resize(frame, dsize=new_size)
                 self.cropped_frame = PIL.ImageTk.PhotoImage(image=PIL.Image.fromarray(frame))
                 self.preview.itemconfigure(self.thumbnail, image=self.cropped_frame)
-                # self.preview.config(bg="blue", width=newImageSizeWidth, height=newImageSizeHeight)
             else:
                 self.vid.vid.set(cv2.CAP_PROP_POS_FRAMES, 0)
         self._job = self.root.after(self.delay, self.play_preview)
@@ -230,7 +236,6 @@ class Cropper:
     def export(self):
         file = os.path.join(self.selected_dir, self.csv_name)
         df = pd.read_csv(file, header=0, names=self.col_names, index_col=0)
-        # print(df)
         df.dropna(axis=0, how='all', subset=['x_start'], inplace=True)
         for index, row in df.iterrows():
             vid = MyVideoCapture(0, self.selected_dir, self.files, self.files.index(index))
@@ -239,46 +244,28 @@ class Cropper:
             height = int(row['y_end'] - row['y_start'])
             out = cv2.VideoWriter(filename, cv2.VideoWriter_fourcc('M', 'J', 'P', 'G'), vid.fps, (width, height))
             ret, _ = vid.vid.read()
-            #read frame by frame
             while ret:
                 ret, frame = vid.vid.read()
                 if ret:
-                    #crop frame
                     cropped = frame[int(row['y_start']):int(row['y_end']), int(row['x_start']):int(row['x_end'])]
-                    # Write the frame into the file 'output.avi'
                     out.write(cropped)
-            # When everything done, release the video capture and video write objects
             print("New cropped video created: ", filename)
             vid.__del__()
             out.release()
-
-        # Make sure all windows are closed
         cv2.destroyAllWindows()
 
     def write_video(self, vid, ):
-        #let's keep it simple...store the new file in same directory, same name, but add suffix
         self.newFileName = os.path.join(str(Path(vid.videofile).parents[0]), str(Path(vid.videofile).stem) +'_cropped.avi')
-
-        # create VideoWriter object and define the codec. This may be an area for warnings and errors - use google if so
         self.out = cv2.VideoWriter(self.newFileName, cv2.VideoWriter_fourcc('M','J','P','G'), self.vid.fps, (self.rect_w, self.rect_h))
         self.ret, _ = self.vid.vid.read()
-        #read frame by frame
         while self.ret:
             self.ret, self.frame = self.vid.vid.read()
             if self.ret:
-                #crop frame
                 self.cropped_img = self.frame[self.y_start:self.y_end, self.x_start:self.x_end]
-                # Write the frame into the file 'output.avi'
                 self.out.write(self.cropped_img)
-
-        # When everything done, release the video capture and video write objects
         self.vid.__del__()
         self.out.release()
-
-        # Make sure all windows are closed
         cv2.destroyAllWindows()
-
-        # Leave a message
         print("New cropped video created: ", self.newFileName)
 
     def ask_directory(self, event):
@@ -358,6 +345,12 @@ class Cropper:
 
     def update_label_videos(self):
         self.label_videos.config(text=f'{self.vid.index+1}/{len(self.files)} : video_name: {self.vid.video_source}')
+
+    def update_label_res(self):
+        res = self.var.get()
+        ind = self.resolutions.index([x for x in self.resolutions if res in x][0])
+        self.lab_res.config(text=f'{res}')
+        self.lab_asp.config(text=f'{self.ratios[ind]}')
 
 class MyVideoCapture:
     def __init__(self, start_milli, directory, files, index):
