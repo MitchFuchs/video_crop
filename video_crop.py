@@ -6,34 +6,41 @@ import os.path
 from pathlib import Path
 import PIL.Image, PIL.ImageTk
 import pandas as pd
+import numpy as np
 import time
-
 
 class Cropper:
     def __init__(self):
+        # self.canvas_w, self.canvas_h = 640, 360
+        self.canvas_w, self.canvas_h = 1280, 720
         self.last = None
         self.vid = None
         self.out = None
         self._job = None
         self.newFileName = None
-        self.selected_dir = None
+        self.selected_dir = ''
+        self.selected_dir = "/home/mitch/clip_extractor/Directional_Push"
         self.files = []
         self.csv_name = "crop.txt"
         self.df = pd.DataFrame()
         self.selected_dirs = []
-        self.bt_width = 20
-        self.divider = 3
+        self.bt_width = 15
+        # self.bt_width = 20
+        self.divider = 1
+        self.linux_multiplier = 2
         self.delay = 50
         self.video_speed = 50
         self.prev_timestamp = 0
         self.ret = False
         self.cropping = False
         self.cropped = False
+        self.clicked = False
         self.x_start, self.y_start, self.x_end, self.y_end = 0, 0, 0, 0
         self.rect_w, self.rect_h = 0, 0
         self.res_w, self.res_h = 0, 0
         self.photo = None
         self.cropped_frame = None
+        self.cropped_img = None
         self.col_names = ['file', 'x_start', 'x_end', 'y_start', 'y_end']
 
         self.root = Tk()
@@ -44,7 +51,7 @@ class Cropper:
         Label(self.root, text="Choose folder", background='light grey').grid(row=1, column=1)
         self.entry_folder = Entry(self.root, width=50)
         self.entry_folder.grid(row=2, column=1, padx=30)
-        self.entry_folder.insert(0, "")
+        self.entry_folder.insert(0, self.selected_dir)
         self.bt_folder = Button(self.root, text="Browse", width=self.bt_width,
                                      command=lambda: self.ask_directory("<Button-1>"))
         self.bt_folder.grid(row=3, column=1)
@@ -58,23 +65,24 @@ class Cropper:
         self.res16_9 = ['1920x1080', '1280x720', '1024x576', '960x540', '854x480', '640x360', '512x288', '256x144']
         self.res4_3 = ['1440x1080', '1280x960', '1024x768', '960x720', '800x600', '640x480', '320x240']
         self.res1_1 = ['1280x1280', '1080x1080', '960x960', '720x720', '640x640', '480x480', '360x360']
-        # self.resolutions = [[] for i in range(4)]
         self.resolutions = [self.res16_9, self.res4_3, self.res1_1]
+        self.all_resolutions = []
         for i, resolution in enumerate(self.resolutions):
             for j, res in enumerate(resolution):
                 Radiobutton(self.frame, text=res, background='light grey', variable=self.var, value=res,
                     command=lambda: self.change_rect_size()).grid(row=j, column=i+1, padx=5, pady=5, sticky=W)
+                self.all_resolutions.append(res)
         self.var.set(None)
         self.frame.grid(row=5, column=1)
 
         # create canvas for video
-        self.canvas_w, self.canvas_h = 640, 360
         self.canvas = Canvas(self.root, width=self.canvas_w, height=self.canvas_h)
         self.canvas.grid(row=1, column=5, rowspan=9, columnspan=4, pady=5)
         self.canvas.bind('<Motion>', self.mouse)
         self.canvas.bind("<Button-1>", self.mouse)
         self.img = self.canvas.create_image(0, 0, image=self.photo, anchor=NW)
         self.rect = self.canvas.create_rectangle(0, 0, 0, 0, outline='red')
+        self.blue_rect = self.canvas.create_rectangle(0, 0, 0, 0, outline='blue')
 
         self.bt_first = Button(self.root, text="First", width=self.bt_width, command=self.select_first)
         self.bt_first.grid(row=10, column=5, pady=5)
@@ -96,13 +104,40 @@ class Cropper:
 
         self.preview = Canvas(self.root, width=self.canvas_w, height=self.canvas_h)
         self.preview.grid(row=12, column=5, rowspan=9, columnspan=5, pady=5)
-        self.preview.bind('<Motion>', self.mouse)
+        # self.preview.bind('<Motion>', self.mouse)
         self.thumbnail = self.preview.create_image(0, 0, image=self.cropped_frame, anchor=NW)
 
+        if len(self.selected_dir) > 0:
+            self.boot()
+        self.bindings()
         self.root.mainloop()
 
+    def boot(self):
+        self.load_files()
+        self.load_csv()
+        self.select_first()
+
+    def bindings(self):
+        self.root.bind('r', lambda event: self.change_resolution('next'))
+        self.root.bind('e', lambda event: self.change_resolution('previous'))
+        self.root.bind('n', lambda event: self.select_next())
+        self.root.bind('b', lambda event: self.select_prev())
+        self.root.bind('l', lambda event: self.select_last())
+        self.root.bind('f', lambda event: self.select_first())
+
+    def change_resolution(self, direction):
+        if direction == 'next':
+            ind = self.all_resolutions.index(self.var.get())+1
+            if ind == len(self.all_resolutions): ind = 0
+        elif direction == 'previous':
+            ind = self.all_resolutions.index(self.var.get())-1
+            if ind < 0:
+                ind = len(self.all_resolutions)-1
+        self.var.set(self.all_resolutions[ind])
+        self.change_rect_size()
+        self.move_blue_rect()
+
     def change_rect_size(self):
-        # print(self.var.get())
         self.rect_w, self.rect_h = [int(x) for x in self.var.get().split('x')]
         self.res_w, self.res_h = self.rect_w / self.divider, self.rect_h / self.divider
 
@@ -122,8 +157,11 @@ class Cropper:
             y_start, y_end = self.canvas_h - self.res_h, self.canvas_h
 
         if event.type == EventType.Motion:
-            if not self.cropped:
-                self.canvas.coords(self.rect, x_start, y_start, x_end, y_end)
+            self.canvas.coords(self.blue_rect, x_start, y_start, x_end, y_end)
+            # self.move_rect()
+            if self.cropped:
+                self.move_rect()
+            #     self.canvas.coords(self.rect, x_start, y_start, x_end, y_end)
         elif event.type == EventType.ButtonPress:
             # self.canvas.coords(self.rect, x_start, y_start, x_end, y_end)
             # convert to image coordinates
@@ -131,9 +169,9 @@ class Cropper:
             self.y_start, self.y_end = y_start * self.divider, y_end * self.divider
             self.df.loc[self.vid.video_source] = [self.x_start, self.x_end, self.y_start, self.y_end]
             self.cropped = True
-            if self._job is not None:
-                self.root.after_cancel(self._job)
-                self._job = None
+            self.clicked = True
+            self.move_rect()
+            self.cancel()
             self.play_preview()
 
     def play_preview(self):
@@ -147,12 +185,7 @@ class Cropper:
             self.prev_timestamp = time.time()
             if ret:
                 aspect_ratio = frame.shape[0] / frame.shape[1]
-                if aspect_ratio == 1:
-                    new_size = (360, 360)
-                elif aspect_ratio == 0.75:
-                    new_size = (480, 360)
-                else:
-                    new_size = (640, 360)
+                new_size = (int(self.canvas_h / aspect_ratio), self.canvas_h)
                 frame = cv2.resize(frame, dsize=new_size)
                 self.cropped_frame = PIL.ImageTk.PhotoImage(image=PIL.Image.fromarray(frame))
                 self.preview.itemconfigure(self.thumbnail, image=self.cropped_frame)
@@ -168,10 +201,23 @@ class Cropper:
                            self.df.loc[self.vid.video_source, 'x_end'] / self.divider,
                            self.df.loc[self.vid.video_source, 'y_end'] / self.divider)
 
+    def move_blue_rect(self):
+        rect_coords = self.canvas.coords(self.blue_rect)
+        rect_center_x, rect_center_y = (rect_coords[0] + rect_coords[2]) / 2, (rect_coords[1] + rect_coords[3]) / 2
+        self.canvas.coords(self.blue_rect,
+                           rect_center_x - self.res_w / 2,
+                           rect_center_y - self.res_h / 2,
+                           rect_center_x + self.res_w / 2,
+                           rect_center_y + self.res_h / 2)
+
     def reset_rect(self):
         self.canvas.coords(self.rect, 0, 0, 0, 0)
 
+    def reset_blue_rect(self):
+        self.canvas.coords(self.blue_rect, 0, 0, 0, 0)
+
     def reset_preview(self):
+        self.preview.delete(self.thumbnail)
         self.thumbnail = self.preview.create_image(0, 0, image=None, anchor=NW)
         self.preview.itemconfigure(self.thumbnail, image=None)
 
@@ -179,13 +225,6 @@ class Cropper:
         if self.vid.ret:
             self.photo = PIL.ImageTk.PhotoImage(image=PIL.Image.fromarray(self.vid.first_frame))
             self.canvas.itemconfigure(self.img, image=self.photo)
-        if not pd.isnull(self.df.loc[self.vid.video_source, 'x_start']):
-            self.cropped = True
-            self.move_rect()
-            self.play_preview()
-        else:
-            self.cropped = False
-            self.reset_rect()
         self.update_label_videos()
 
     def export(self):
@@ -228,10 +267,9 @@ class Cropper:
             self.ret, self.frame = self.vid.vid.read()
             if self.ret:
                 #crop frame
-                self.cropped = self.frame[self.y_start:self.y_end, self.x_start:self.x_end]
-                print(self.cropped.shape)
+                self.cropped_img = self.frame[self.y_start:self.y_end, self.x_start:self.x_end]
                 # Write the frame into the file 'output.avi'
-                self.out.write(self.cropped)
+                self.out.write(self.cropped_img)
 
         # When everything done, release the video capture and video write objects
         self.vid.__del__()
@@ -245,12 +283,10 @@ class Cropper:
 
     def ask_directory(self, event):
         self.selected_dir = filedialog.askdirectory()
+        self.entry_folder.insert(0, self.selected_dir)
         # if self.selected_dir not in self.selected_dirs:
         #     self.selected_dirs.insert(0, self.selected_dir)
-        self.entry_folder.insert(0, self.selected_dir)
-        self.load_files()
-        self.load_csv()
-        self.select_first()
+        self.boot()
 
     def load_csv(self):
         file = os.path.join(self.selected_dir, self.csv_name)
@@ -261,33 +297,64 @@ class Cropper:
             print('crop file created')
             self.df = pd.read_csv(file, header=None, names=self.col_names, index_col=0)
         else:
-            self.df = pd.read_csv(file, header=0, names=self.col_names, index_col=0)
+            df = pd.read_csv(file, header=0, names=self.col_names, index_col=0)
+            files_to_add = [x for x in self.files if x not in df.index]
+            df_to_add = pd.DataFrame(data=[], columns=['x_start', 'x_end', 'y_start', 'y_end'], index=files_to_add)
+            df_to_add = df_to_add.rename_axis('file')
+            self.df = pd.concat([df, df_to_add])
 
     def save(self):
         self.df.to_csv(os.path.join(self.selected_dir, self.csv_name))
+        self.load_csv()
 
     def load_files(self):
         self.files = [f for f in os.listdir(self.selected_dir) if f.endswith('.mp4')]
 
+    def cancel(self):
+        if self._job is not None:
+            self.root.after_cancel(self._job)
+            self._job = None
+
+    def reset_after_video_change(self):
+        self.cancel()
+        self.reset_preview()
+        self.reset_rect()
+        self.reset_blue_rect()
+        self.clicked = False
+        self.divider = self.vid.width / self.canvas_w
+        x_start = self.df.loc[self.vid.video_source, 'x_start']
+        if np.isnan(x_start):
+            self.cropped = False
+        elif x_start >= 0:
+            self.cropped = True
+            self.crop_size_from_df()
+            self.move_rect()
+            self.play_preview()
+        self.update_canvas()
+
+    def crop_size_from_df(self):
+        x_start, y_start, x_end, y_end = \
+            self.df.loc[self.vid.video_source, ['x_start', 'y_start', 'x_end', 'y_end']]
+        w = round(x_end - x_start)
+        h = round(y_end - y_start)
+        self.var.set(str(w)+'x'+str(h))
+        self.change_rect_size()
+
     def select_first(self):
         self.vid = MyVideoCapture(0, self.selected_dir, self.files, 0)
-        self.reset_preview()
-        self.update_canvas()
+        self.reset_after_video_change()
 
     def select_last(self):
         self.vid = MyVideoCapture(0, self.selected_dir, self.files, len(self.files)-1)
-        self.reset_preview()
-        self.update_canvas()
+        self.reset_after_video_change()
 
     def select_next(self):
         self.vid = MyVideoCapture(0, self.selected_dir, self.files, min(len(self.files)-1, self.vid.index+1))
-        self.reset_preview()
-        self.update_canvas()
+        self.reset_after_video_change()
 
     def select_prev(self):
         self.vid = MyVideoCapture(0, self.selected_dir, self.files, max(0, self.vid.index-1))
-        self.reset_preview()
-        self.update_canvas()
+        self.reset_after_video_change()
 
     def update_label_videos(self):
         self.label_videos.config(text=f'{self.vid.index+1}/{len(self.files)} : video_name: {self.vid.video_source}')
@@ -295,7 +362,8 @@ class Cropper:
 class MyVideoCapture:
     def __init__(self, start_milli, directory, files, index):
         # Open the video source
-        self.dim = (640, 360)
+        self.linux_multiplier = 2
+        self.dim = (640*self.linux_multiplier, 360*self.linux_multiplier)
         self.start_milli = start_milli
         self.directory = directory
         self.files = files
@@ -313,17 +381,7 @@ class MyVideoCapture:
         self.width = self.vid.get(cv2.CAP_PROP_FRAME_WIDTH)
         self.height = self.vid.get(cv2.CAP_PROP_FRAME_HEIGHT)
         # self.dim = self.get_dim(self.width, self.height)
-        self.dim = (640, 360)
         self.fps = 25
-
-    # def get_dim(self, width, height):
-    #     if width == 1920 and height == 1080:
-    #         divider = 3
-    #     elif width == 1080 and height == 720:
-    #         divider = 2
-    #     else:
-    #         divider = 4
-    #     return int(width / divider), int(height / divider)
 
     def get_frame(self):
         while self.vid.isOpened():
