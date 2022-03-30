@@ -6,8 +6,8 @@ import os.path
 from pathlib import Path
 import PIL.Image, PIL.ImageTk
 import pandas as pd
+import numpy as np
 import time
-
 
 class Cropper:
     def __init__(self):
@@ -16,13 +16,16 @@ class Cropper:
         self.out = None
         self._job = None
         self.newFileName = None
-        self.selected_dir = None
+        self.selected_dir = ''
+        self.selected_dir = "/home/mitch/clip_extractor/Directional_Push"
         self.files = []
         self.csv_name = "crop.txt"
         self.df = pd.DataFrame()
         self.selected_dirs = []
-        self.bt_width = 20
+        self.bt_width = 15
+        # self.bt_width = 20
         self.divider = 3
+        self.linux_multiplier = 2
         self.delay = 50
         self.video_speed = 50
         self.prev_timestamp = 0
@@ -44,7 +47,7 @@ class Cropper:
         Label(self.root, text="Choose folder", background='light grey').grid(row=1, column=1)
         self.entry_folder = Entry(self.root, width=50)
         self.entry_folder.grid(row=2, column=1, padx=30)
-        self.entry_folder.insert(0, "")
+        self.entry_folder.insert(0, self.selected_dir)
         self.bt_folder = Button(self.root, text="Browse", width=self.bt_width,
                                      command=lambda: self.ask_directory("<Button-1>"))
         self.bt_folder.grid(row=3, column=1)
@@ -99,7 +102,15 @@ class Cropper:
         self.preview.bind('<Motion>', self.mouse)
         self.thumbnail = self.preview.create_image(0, 0, image=self.cropped_frame, anchor=NW)
 
+        if len(self.selected_dir)>0:
+            self.boot()
+
         self.root.mainloop()
+
+    def boot(self):
+        self.load_files()
+        self.load_csv()
+        self.select_first()
 
     def change_rect_size(self):
         # print(self.var.get())
@@ -148,11 +159,11 @@ class Cropper:
             if ret:
                 aspect_ratio = frame.shape[0] / frame.shape[1]
                 if aspect_ratio == 1:
-                    new_size = (360, 360)
+                    new_size = (360*self.linux_multiplier, 360*self.linux_multiplier)
                 elif aspect_ratio == 0.75:
-                    new_size = (480, 360)
+                    new_size = (480*self.linux_multiplier, 360*self.linux_multiplier)
                 else:
-                    new_size = (640, 360)
+                    new_size = (640*self.linux_multiplier, 360*self.linux_multiplier)
                 frame = cv2.resize(frame, dsize=new_size)
                 self.cropped_frame = PIL.ImageTk.PhotoImage(image=PIL.Image.fromarray(frame))
                 self.preview.itemconfigure(self.thumbnail, image=self.cropped_frame)
@@ -179,13 +190,14 @@ class Cropper:
         if self.vid.ret:
             self.photo = PIL.ImageTk.PhotoImage(image=PIL.Image.fromarray(self.vid.first_frame))
             self.canvas.itemconfigure(self.img, image=self.photo)
-        if not pd.isnull(self.df.loc[self.vid.video_source, 'x_start']):
+        if pd.isnull(self.df.loc[self.vid.video_source, 'x_start']):
+            self.cropped = False
+            self.reset_rect()
+        else:
             self.cropped = True
             self.move_rect()
             self.play_preview()
-        else:
-            self.cropped = False
-            self.reset_rect()
+
         self.update_label_videos()
 
     def export(self):
@@ -245,12 +257,10 @@ class Cropper:
 
     def ask_directory(self, event):
         self.selected_dir = filedialog.askdirectory()
+        self.entry_folder.insert(0, self.selected_dir)
         # if self.selected_dir not in self.selected_dirs:
         #     self.selected_dirs.insert(0, self.selected_dir)
-        self.entry_folder.insert(0, self.selected_dir)
-        self.load_files()
-        self.load_csv()
-        self.select_first()
+        self.boot()
 
     def load_csv(self):
         file = os.path.join(self.selected_dir, self.csv_name)
@@ -261,7 +271,11 @@ class Cropper:
             print('crop file created')
             self.df = pd.read_csv(file, header=None, names=self.col_names, index_col=0)
         else:
-            self.df = pd.read_csv(file, header=0, names=self.col_names, index_col=0)
+            df = pd.read_csv(file, header=0, names=self.col_names, index_col=0)
+            files_to_add = [x for x in self.files if x not in df.index]
+            df_to_add = pd.DataFrame(data=[], columns=['x_start', 'x_end', 'y_start', 'y_end'], index=files_to_add)
+            df_to_add = df_to_add.rename_axis('file')
+            self.df = pd.concat([df, df_to_add])
 
     def save(self):
         self.df.to_csv(os.path.join(self.selected_dir, self.csv_name))
@@ -295,7 +309,8 @@ class Cropper:
 class MyVideoCapture:
     def __init__(self, start_milli, directory, files, index):
         # Open the video source
-        self.dim = (640, 360)
+        self.linux_multiplier = 2
+        self.dim = (640*self.linux_multiplier, 360*self.linux_multiplier)
         self.start_milli = start_milli
         self.directory = directory
         self.files = files
@@ -313,7 +328,6 @@ class MyVideoCapture:
         self.width = self.vid.get(cv2.CAP_PROP_FRAME_WIDTH)
         self.height = self.vid.get(cv2.CAP_PROP_FRAME_HEIGHT)
         # self.dim = self.get_dim(self.width, self.height)
-        self.dim = (640, 360)
         self.fps = 25
 
     # def get_dim(self, width, height):
