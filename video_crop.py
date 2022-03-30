@@ -298,9 +298,18 @@ class Cropper:
             self.cropped = False
         elif x_start >= 0:
             self.cropped = True
+            self.crop_size_from_df()
             self.move_rect()
             self.play_preview()
         self.update_canvas()
+
+    def crop_size_from_df(self):
+        x_start, y_start, x_end, y_end = \
+            self.df.loc[self.vid.video_source, ['x_start', 'y_start', 'x_end', 'y_end']]
+        w = round(x_end - x_start)
+        h = round(y_end - y_start)
+        self.var.set(str(w)+'x'+str(h))
+        self.change_rect_size()
 
     def select_first(self):
         self.vid = MyVideoCapture(0, self.selected_dir, self.files, 0)
