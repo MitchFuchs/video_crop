@@ -11,7 +11,7 @@ import time
 
 class Cropper:
     def __init__(self):
-        self.canvas_w, self.canvas_h = 640, 360
+        # self.canvas_w, self.canvas_h = 640, 360
         self.canvas_w, self.canvas_h = 1280, 720
         self.last = None
         self.vid = None
@@ -65,12 +65,13 @@ class Cropper:
         self.res16_9 = ['1920x1080', '1280x720', '1024x576', '960x540', '854x480', '640x360', '512x288', '256x144']
         self.res4_3 = ['1440x1080', '1280x960', '1024x768', '960x720', '800x600', '640x480', '320x240']
         self.res1_1 = ['1280x1280', '1080x1080', '960x960', '720x720', '640x640', '480x480', '360x360']
-        # self.resolutions = [[] for i in range(4)]
         self.resolutions = [self.res16_9, self.res4_3, self.res1_1]
+        self.all_resolutions = []
         for i, resolution in enumerate(self.resolutions):
             for j, res in enumerate(resolution):
                 Radiobutton(self.frame, text=res, background='light grey', variable=self.var, value=res,
                     command=lambda: self.change_rect_size()).grid(row=j, column=i+1, padx=5, pady=5, sticky=W)
+                self.all_resolutions.append(res)
         self.var.set(None)
         self.frame.grid(row=5, column=1)
 
@@ -108,7 +109,7 @@ class Cropper:
 
         if len(self.selected_dir) > 0:
             self.boot()
-
+        self.bindings()
         self.root.mainloop()
 
     def boot(self):
@@ -116,8 +117,27 @@ class Cropper:
         self.load_csv()
         self.select_first()
 
+    def bindings(self):
+        self.root.bind('r', lambda event: self.change_resolution('next'))
+        self.root.bind('e', lambda event: self.change_resolution('previous'))
+        self.root.bind('n', lambda event: self.select_next())
+        self.root.bind('b', lambda event: self.select_prev())
+        self.root.bind('l', lambda event: self.select_last())
+        self.root.bind('f', lambda event: self.select_first())
+
+    def change_resolution(self, direction):
+        if direction == 'next':
+            ind = self.all_resolutions.index(self.var.get())+1
+            if ind == len(self.all_resolutions): ind = 0
+        elif direction == 'previous':
+            ind = self.all_resolutions.index(self.var.get())-1
+            if ind < 0:
+                ind = len(self.all_resolutions)-1
+        self.var.set(self.all_resolutions[ind])
+        self.change_rect_size()
+        self.move_blue_rect()
+
     def change_rect_size(self):
-        # print(self.var.get())
         self.rect_w, self.rect_h = [int(x) for x in self.var.get().split('x')]
         self.res_w, self.res_h = self.rect_w / self.divider, self.rect_h / self.divider
 
@@ -180,6 +200,15 @@ class Cropper:
                            self.df.loc[self.vid.video_source, 'y_start'] / self.divider,
                            self.df.loc[self.vid.video_source, 'x_end'] / self.divider,
                            self.df.loc[self.vid.video_source, 'y_end'] / self.divider)
+
+    def move_blue_rect(self):
+        rect_coords = self.canvas.coords(self.blue_rect)
+        rect_center_x, rect_center_y = (rect_coords[0] + rect_coords[2]) / 2, (rect_coords[1] + rect_coords[3]) / 2
+        self.canvas.coords(self.blue_rect,
+                           rect_center_x - self.res_w / 2,
+                           rect_center_y - self.res_h / 2,
+                           rect_center_x + self.res_w / 2,
+                           rect_center_y + self.res_h / 2)
 
     def reset_rect(self):
         self.canvas.coords(self.rect, 0, 0, 0, 0)
