@@ -11,15 +11,15 @@ import time
 
 class Cropper:
     def __init__(self):
-        # self.canvas_w, self.canvas_h = 640, 360
-        self.canvas_w, self.canvas_h = 1280, 720
+        self.canvas_w, self.canvas_h = 640, 480
+        #self.canvas_w, self.canvas_h = 1280, 720
         self.last = None
         self.vid = None
         self.out = None
         self._job = None
         self.newFileName = None
         self.selected_dir = ''
-        self.selected_dir = "/home/mitch/clip_extractor/Push"
+        #self.selected_dir = "/home/mitch/clip_extractor/Push"
         # self.selected_dir = "/mnt/data/chimps/Directional_Push_2"
         self.files = []
         self.csv_name = "crop.txt"
@@ -27,8 +27,8 @@ class Cropper:
         self.selected_dirs = []
         self.bt_width = 15
         # self.bt_width = 20
-        self.divider = 1
-        self.linux_multiplier = 2
+        self.divider = 0.5
+        self.linux_multiplier = 0.5
         self.delay = 50
         self.video_speed = 50
         self.prev_timestamp = 0
@@ -42,7 +42,7 @@ class Cropper:
         self.photo = None
         self.cropped_frame = None
         self.cropped_img = None
-        self.col_names = ['file', 'x_start', 'x_end', 'y_start', 'y_end', 'keep']
+        self.col_names = ['file', 'x_start', 'x_end', 'y_start', 'y_end', 'ignore']
 
         self.root = Tk()
         self.root.configure(background='light grey')
@@ -180,7 +180,10 @@ class Cropper:
             # convert to image coordinates
             self.x_start, self.x_end = x_start * self.divider, x_end * self.divider
             self.y_start, self.y_end = y_start * self.divider, y_end * self.divider
-            self.df.loc[self.vid.video_source] = [self.x_start, self.x_end, self.y_start, self.y_end]
+            print(self.df)
+            print(self.vid.video_source)
+            print(self.x_start, self.x_end)
+            self.df.loc[self.vid.video_source] = [self.x_start, self.x_end, self.y_start, self.y_end, False]
             self.cropped = True
             self.clicked = True
             self.move_rect()
@@ -229,7 +232,7 @@ class Cropper:
 
     def reset_ignore(self):
         # only if TRUE specified in df
-        if not pd.isnull(self.df.loc[self.vid.video_source, 'keep']) and self.df.loc[self.vid.video_source, 'keep']:
+        if not pd.isnull(self.df.loc[self.vid.video_source, 'ignore']) and self.df.loc[self.vid.video_source, 'ignore']:
             self.ignore_red()
         else:
             self.ignore_grey()
@@ -360,10 +363,10 @@ class Cropper:
         if self.vid is not None:
             if self.bt_ignore['text'] == 'Ignore':
                 self.ignore_red()
-                self.df.loc[self.vid.video_source, 'keep'] = True
+                self.df.loc[self.vid.video_source, 'ignore'] = True
             else:
                 self.ignore_grey()
-                self.df.loc[self.vid.video_source, 'keep'] = False
+                self.df.loc[self.vid.video_source, 'ignore'] = False
 
     def ignore_red(self):
         self.bt_ignore.config(text='Ignored', background='red', activebackground='red')
@@ -383,8 +386,8 @@ class Cropper:
 class MyVideoCapture:
     def __init__(self, start_milli, directory, files, index):
         # Open the video source
-        self.linux_multiplier = 2
-        self.dim = (640*self.linux_multiplier, 360*self.linux_multiplier)
+        self.linux_multiplier = 1
+        self.dim = (640*self.linux_multiplier, 480*self.linux_multiplier)
         self.start_milli = start_milli
         self.directory = directory
         self.files = files
@@ -402,7 +405,7 @@ class MyVideoCapture:
         self.width = self.vid.get(cv2.CAP_PROP_FRAME_WIDTH)
         self.height = self.vid.get(cv2.CAP_PROP_FRAME_HEIGHT)
         # self.dim = self.get_dim(self.width, self.height)
-        self.fps = 25
+        self.fps = 30
 
     def get_frame(self):
         while self.vid.isOpened():
