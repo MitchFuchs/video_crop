@@ -73,6 +73,7 @@ class Cropper:
         self.res16_9 = ['1920x1080', '1280x720', '1024x576', '960x540', '854x480', '640x360', '512x288', '256x144']
         self.res4_3 = ['1440x1080', '1280x960', '1024x768', '960x720', '800x600', '640x480', '320x240']
         self.res1_1 = ['1280x1280', '1080x1080', '960x960', '720x720', '640x640', '480x480', '360x360']
+
         self.resolutions = [self.res16_9, self.res4_3, self.res1_1]
         self.all_resolutions = []
         for i, resolution in enumerate(self.resolutions):
@@ -115,7 +116,7 @@ class Cropper:
         self.bt_save.grid(row=11, column=8, pady=5)
 
         self.preview = Canvas(self.root, width=self.canvas_w, height=self.canvas_h)
-        self.preview.grid(row=12, column=5, rowspan=9, columnspan=5, pady=5)
+        self.preview.grid(row=1, column=11, rowspan=9, columnspan=5, pady=5)
         self.thumbnail = self.preview.create_image(0, 0, image=self.cropped_frame, anchor=NW)
 
         self.bindings()
