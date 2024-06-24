@@ -70,9 +70,12 @@ class Cropper:
         self.frame = LabelFrame(self.root, text="choose your resolution", bg='light grey', pady=5)
         self.var = StringVar()
         self.ratios = ['16:9', '4:3', '1:1']
-        self.res16_9 = ['1920x1080', '1280x720', '1024x576', '960x540', '854x480', '640x360', '512x288', '256x144']
-        self.res4_3 = ['1440x1080', '1280x960', '1024x768', '960x720', '800x600', '640x480', '320x240']
-        self.res1_1 = ['1280x1280', '1080x1080', '960x960', '720x720', '640x640', '480x480', '360x360']
+        #self.res16_9 = ['1920x1080', '1280x720', '1024x576', '960x540', '854x480', '640x360', '512x288', '256x144']
+        #self.res4_3 = ['1440x1080', '1280x960', '1024x768', '960x720', '800x600', '640x480', '320x240']
+        #self.res1_1 = ['1280x1280', '1080x1080', '960x960', '720x720', '640x640', '480x480', '360x360']
+        self.res16_9 = ['640x360', '512x288', '256x144']
+        self.res4_3 = ['640x480', '560x420', '480x360', '400x300', '320x240', '300x224', '240x180', '200x150', '160x120']
+        self.res1_1 = ['480x480', '420x420', '360x360', '300x300', '240x240', '224x224', '180x180', '150x150', '120x120']
 
         self.resolutions = [self.res16_9, self.res4_3, self.res1_1]
         self.all_resolutions = []
@@ -107,7 +110,7 @@ class Cropper:
         self.bt_last.grid(row=10, column=8, pady=5)
 
         self.label_videos = Label(self.root, text="", background='light grey')
-        self.label_videos.grid(row=11, column=5, columnspan=2, pady=5)
+        self.label_videos.grid(row=12, column=5, columnspan=4, pady=5)
 
         self.bt_export = Button(self.root, text="Export crops", width=self.bt_width, command=self.export)
         self.bt_export.grid(row=11, column=7, pady=5)
@@ -181,9 +184,6 @@ class Cropper:
             # convert to image coordinates
             self.x_start, self.x_end = x_start * self.divider, x_end * self.divider
             self.y_start, self.y_end = y_start * self.divider, y_end * self.divider
-            print(self.df)
-            print(self.vid.video_source)
-            print(self.x_start, self.x_end)
             self.df.loc[self.vid.video_source] = [self.x_start, self.x_end, self.y_start, self.y_end, False]
             self.cropped = True
             self.clicked = True
@@ -232,11 +232,16 @@ class Cropper:
         self.canvas.coords(self.blue_rect, 0, 0, 0, 0)
 
     def reset_ignore(self):
-        # only if TRUE specified in df
-        if not pd.isnull(self.df.loc[self.vid.video_source, 'ignore']) and self.df.loc[self.vid.video_source, 'ignore']:
+        # if ignore is True
+        if self.df.loc[self.vid.video_source, 'ignore'] == 'True':
             self.ignore_red()
         else:
             self.ignore_grey()
+        # only if TRUE specified in df
+        #if not pd.isnull(self.df.loc[self.vid.video_source, 'ignore']) and self.df.loc[self.vid.video_source, 'ignore']:
+        #    self.ignore_red()
+        #else:
+        #    self.ignore_grey()
 
     def reset_preview(self):
         self.preview.delete(self.thumbnail)
