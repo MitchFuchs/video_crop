@@ -184,7 +184,8 @@ class Cropper:
             # convert to image coordinates
             self.x_start, self.x_end = x_start * self.divider, x_end * self.divider
             self.y_start, self.y_end = y_start * self.divider, y_end * self.divider
-            self.df.loc[self.vid.video_source] = [self.x_start, self.x_end, self.y_start, self.y_end, False]
+            ignore_flag = self.df.loc[self.vid.video_source, 'ignore']
+            self.df.loc[self.vid.video_source] = [self.x_start, self.x_end, self.y_start, self.y_end, ignore_flag]
             self.cropped = True
             self.clicked = True
             self.move_rect()
