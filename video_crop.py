@@ -371,10 +371,10 @@ class Cropper:
         if self.vid is not None:
             if self.bt_ignore['text'] == 'Ignore':
                 self.ignore_red()
-                self.df.loc[self.vid.video_source, 'ignore'] = True
+                self.df.loc[self.vid.video_source, 'ignore'] = "True"
             else:
                 self.ignore_grey()
-                self.df.loc[self.vid.video_source, 'ignore'] = False
+                self.df.loc[self.vid.video_source, 'ignore'] = "False"
 
     def ignore_red(self):
         self.bt_ignore.config(text='Ignored', background='red', activebackground='red')
