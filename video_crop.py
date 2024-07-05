@@ -138,10 +138,11 @@ class Cropper:
     def bindings(self):
         self.root.bind('r', lambda event: self.change_resolution('next'))
         self.root.bind('e', lambda event: self.change_resolution('previous'))
-        self.root.bind('n', lambda event: self.select_next())
-        self.root.bind('b', lambda event: self.select_prev())
+        self.root.bind('f', lambda event: self.select_next())
+        self.root.bind('d', lambda event: self.select_prev())
         self.root.bind('l', lambda event: self.select_last())
-        self.root.bind('f', lambda event: self.select_first())
+        self.root.bind('k', lambda event: self.select_first())
+        self.root.bind('h', lambda event: self.ignore())
 
     def change_resolution(self, direction):
         if direction == 'next':
